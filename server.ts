@@ -3,8 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
-import { findInEncyclopedia } from './src/data/fragranceEncyclopedia';
-import { searchAndExtractWebPerfume } from './src/services/webFragranceSearch';
+import { findInEncyclopedia } from './src/data/fragranceEncyclopedia.ts';
+import { searchAndExtractWebPerfume } from './src/services/webFragranceSearch.ts';
 
 dotenv.config();
 

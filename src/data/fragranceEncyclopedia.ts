@@ -1,4 +1,4 @@
-import { SearchedPerfumeProfile } from '../types';
+import type { SearchedPerfumeProfile } from '../types';
 
 export interface VerifiedFragranceData {
   keys: string[]; // Search triggers / aliases
