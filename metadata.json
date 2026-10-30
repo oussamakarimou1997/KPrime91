@@ -1,0 +1,8 @@
+{
+  "name": "Kprime",
+  "description": "Kprime official perfume mixing calculator, 1 to 4 oils formulation engine, real-time team chat, Similar Perfume finder, and persistent database.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
