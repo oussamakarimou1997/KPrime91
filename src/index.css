@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    color-scheme: light;
+  }
+  
+  body {
+    background-color: #faf9f6;
+    color: #1c1917;
+  }
+
+  .font-serif-luxury {
+    font-family: 'Cinzel', serif;
+  }
+}
+
+/* Custom scrollbar for clean luxury UI */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(231, 229, 228, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(168, 162, 158, 0.6);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(217, 119, 6, 0.7);
+}
+

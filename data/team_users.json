@@ -1,0 +1,52 @@
+[
+  {
+    "id": "usr_ahmed",
+    "name": "Ahmed El Mansouri",
+    "role": "Master Formulator",
+    "email": "ahmed@kprime.ma",
+    "avatarColor": "#059669",
+    "status": "active",
+    "code": "AEM",
+    "phone": "+212 661-234567"
+  },
+  {
+    "id": "usr_youssef",
+    "name": "Youssef Alami",
+    "role": "Senior Formulator",
+    "email": "youssef@kprime.ma",
+    "avatarColor": "#0d9488",
+    "status": "active",
+    "code": "YSA",
+    "phone": "+212 662-345678"
+  },
+  {
+    "id": "usr_omar",
+    "name": "Omar Bennani",
+    "role": "Perfume Specialist",
+    "email": "omar@kprime.ma",
+    "avatarColor": "#d97706",
+    "status": "active",
+    "code": "OBN",
+    "phone": "+212 663-456789"
+  },
+  {
+    "id": "usr_fatima",
+    "name": "Fatima Zahra",
+    "role": "Atelier Manager",
+    "email": "fatima@kprime.ma",
+    "avatarColor": "#7c3aed",
+    "status": "active",
+    "code": "FZH",
+    "phone": "+212 664-567890"
+  },
+  {
+    "id": "usr_karim",
+    "name": "Karim Bennani",
+    "role": "Laboratory Director",
+    "email": "karim@kprime.ma",
+    "avatarColor": "#2563eb",
+    "status": "active",
+    "code": "KBN",
+    "phone": "+212 665-010203"
+  }
+]
