@@ -85,8 +85,26 @@ export default {
 
       if (path === '/api/oil-records' && method === 'GET') {
         try {
+          await env.DB.prepare(`CREATE TABLE IF NOT EXISTS oil_records (
+            id TEXT PRIMARY KEY NOT NULL,
+            date TEXT NOT NULL,
+            oil_name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            amount REAL NOT NULL,
+            notes TEXT,
+            created_at TEXT,
+            updated_at TEXT
+          )`).run();
+
           const res = await env.DB.prepare('SELECT * FROM oil_records ORDER BY date DESC, created_at DESC').all<any>();
-          return json({ records: res.results, count: res.results.length });
+          let records = res.results || [];
+
+          if (records.length === 0) {
+            const fallback = await list(env.DB, 'oil_records');
+            if (fallback && fallback.length > 0) records = fallback;
+          }
+          return json({ records, count: records.length });
         } catch {
           const fallback = await list(env.DB, 'oil_records');
           return json({ records: fallback, count: fallback.length });
@@ -99,31 +117,45 @@ export default {
         const now = new Date().toISOString();
         const record = {
           id,
-          date: item.date || now.split('T')[0],
+          date: item.date || now,
           oil_name: String(item.oil_name).trim(),
           type: item.type === 'consumption' ? 'consumption' : 'income',
           quantity: Number(item.quantity) || 0,
           amount: Number(item.amount) || 0,
           notes: item.notes ? String(item.notes).trim() : '',
-          unit: item.unit ? String(item.unit) : 'g',
-          created_at: now,
+          created_at: item.created_at || now,
           updated_at: now,
         };
         try {
-          await env.DB.prepare('INSERT INTO oil_records (id, date, oil_name, type, quantity, amount, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          await env.DB.prepare(`CREATE TABLE IF NOT EXISTS oil_records (
+            id TEXT PRIMARY KEY NOT NULL,
+            date TEXT NOT NULL,
+            oil_name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            amount REAL NOT NULL,
+            notes TEXT,
+            created_at TEXT,
+            updated_at TEXT
+          )`).run();
+
+          await env.DB.prepare('INSERT OR REPLACE INTO oil_records (id, date, oil_name, type, quantity, amount, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
             .bind(record.id, record.date, record.oil_name, record.type, record.quantity, record.amount, record.notes, record.created_at, record.updated_at).run();
-        } catch {
-          await saveOne(env.DB, 'oil_records', record);
+        } catch (dbErr) {
+          console.warn('Direct oil_records table insert failed, falling back to app_records:', dbErr);
         }
+        // Dual write to app_records for guaranteed consistency
+        await saveOne(env.DB, 'oil_records', record);
         return json({ success: true, record });
       }
       if (path.startsWith('/api/oil-records/') && method === 'DELETE') {
         const id = decodeURIComponent(path.slice('/api/oil-records/'.length));
         try {
           await env.DB.prepare('DELETE FROM oil_records WHERE id = ?').bind(id).run();
-        } catch {
+        } catch {}
+        try {
           await env.DB.prepare("DELETE FROM app_records WHERE collection='oil_records' AND id=?").bind(id).run();
-        }
+        } catch {}
         return json({ success: true, id });
       }
 

@@ -137,7 +137,7 @@ export async function addOilRecord(
   const now = new Date().toISOString();
   const newRecord: OilRecord = {
     id: recordData.id || `oil_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    date: recordData.date || now.split('T')[0],
+    date: recordData.date || now,
     oil_name: recordData.oil_name.trim(),
     type: recordData.type,
     quantity: Math.max(0, Number(recordData.quantity) || 0),
@@ -193,3 +193,6 @@ export async function deleteOilRecord(id: string): Promise<boolean> {
     return true; // Still removed locally
   }
 }
+
+// Convenient alias matching user naming
+export const addRecord = addOilRecord;

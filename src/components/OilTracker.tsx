@@ -114,10 +114,22 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
     }
   };
 
+  // Helper: extract YYYY-MM-DD from any date representation (ISO timestamp or date string)
+  const getRecordDate = (r: OilRecord): string => {
+    const raw = r.date || r.created_at || '';
+    if (!raw) return '';
+    return raw.includes('T') ? raw.split('T')[0] : raw;
+  };
+
   // Helper: check if a record was automatically logged by the Mixing Calculator
   const isAutoLogged = (r: OilRecord): boolean => {
     const text = (r.notes || '').toLowerCase();
-    return text.includes('auto-logged') || text.includes('mixing calculator') || text.includes('blend');
+    return (
+      text.includes('auto-logged') ||
+      text.includes('mixing calculator') ||
+      text.includes('batch:') ||
+      text.includes('blend')
+    );
   };
 
   // Popular oil suggestions for manual input
@@ -174,8 +186,8 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
         return false;
       }
 
-      // 5. Date / Period filter
-      const recordDate = r.date || (r.created_at ? r.created_at.split('T')[0] : '');
+      // 5. Date / Period filter (normalized for ISO timestamps)
+      const recordDate = getRecordDate(r);
 
       if (periodFilter === 'daily') {
         return recordDate === selectedDate;
@@ -206,9 +218,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
 
   // Daily Metrics
   const dailyMetrics = useMemo(() => {
-    const dailyRecords = records.filter(
-      (r) => (r.date || (r.created_at ? r.created_at.split('T')[0] : '')) === selectedDate
-    );
+    const dailyRecords = records.filter((r) => getRecordDate(r) === selectedDate);
     let consumptionGrams = 0;
     let incomeAmount = 0;
     let consumptionAmount = 0;
@@ -236,9 +246,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
 
   // Monthly Metrics
   const monthlyMetrics = useMemo(() => {
-    const monthRecords = records.filter((r) =>
-      (r.date || (r.created_at ? r.created_at.split('T')[0] : '')).startsWith(selectedMonth)
-    );
+    const monthRecords = records.filter((r) => getRecordDate(r).startsWith(selectedMonth));
     let consumptionGrams = 0;
     let incomeAmount = 0;
     let consumptionAmount = 0;
@@ -307,7 +315,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
 
     const periodRecords = records.filter((r) => {
       if (r.type !== 'consumption') return false;
-      const recordDate = r.date || (r.created_at ? r.created_at.split('T')[0] : '');
+      const recordDate = getRecordDate(r);
       if (periodFilter === 'daily') return recordDate === selectedDate;
       if (periodFilter === 'monthly') return recordDate.startsWith(selectedMonth);
       if (periodFilter === 'custom') {
@@ -1263,7 +1271,12 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                       <td className="py-3.5 px-4 font-mono font-medium text-stone-700 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5 text-stone-400" />
-                          <span>{record.date}</span>
+                          <span>{getRecordDate(record)}</span>
+                          {record.date && record.date.includes('T') && (
+                            <span className="text-[10px] text-stone-400 font-mono">
+                              {new Date(record.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
                         </div>
                       </td>
 

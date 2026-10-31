@@ -60,7 +60,7 @@ import {
   BottleOption,
 } from '../services/pricing';
 import { PriceChartModal } from './PriceChartModal';
-import { addOilRecord } from '../services/oilService';
+import { addRecord } from '../services/oilService';
 
 interface MixingCalculatorProps {
   perfumes: Perfume[];
@@ -442,7 +442,7 @@ export const MixingCalculator: React.FC<MixingCalculatorProps> = ({
   };
 
   // Save current formula
-  const handleSaveFormula = () => {
+  const handleSaveFormula = async () => {
     // 1. Check Sales Man selection (REQUIRED)
     if (!selectedSalesManId) {
       setSalesManError('Please select the Sales Man who performed this mixing operation before saving.');
@@ -516,22 +516,37 @@ export const MixingCalculator: React.FC<MixingCalculatorProps> = ({
       notes: formulationNotes.trim() || undefined,
     });
 
-    // Automatically log oil consumption to Oil Tracker (POST /api/oil-records)
+    // 2. Automatically log oil consumption to Oil Tracker (POST /api/oil-records)
     const exactOilGrams = Number(multiCalcResult.totalOilGrams.toFixed(2));
-    const nowStr = new Date().toISOString().split('T')[0];
-    const autoNotes = `Auto-logged from Mixing Calculator: ${multiCalcResult.bottleSize}ml blend`;
+    const nowIso = new Date().toISOString();
+    const perfumeNameForLog = numberOfOils === 1 ? primaryPerfume.name : formulaSummaryName;
+    const autoNotes = `Auto-logged from Mixing Calculator batch: ${perfumeNameForLog}`;
+    const autoAmount = priceResult?.price ? Number(priceResult.price) : 0;
 
-    addOilRecord({
-      date: nowStr,
-      oil_name: formulaSummaryName,
-      type: 'consumption',
+    const oilRecordPayload = {
+      date: nowIso,
+      oil_name: perfumeNameForLog,
+      type: 'consumption' as const,
       quantity: exactOilGrams,
-      unit: 'g',
-      amount: priceResult?.price ? Number(priceResult.price) : 0,
+      unit: 'g' as const,
+      amount: autoAmount,
       notes: autoNotes,
-    }).catch((err) => {
-      console.warn('Failed auto-sync to oil_records table:', err);
-    });
+    };
+
+    try {
+      await addRecord(oilRecordPayload);
+    } catch (err) {
+      console.warn('addRecord failed, attempting direct fetch /api/oil-records:', err);
+      try {
+        await fetch('/api/oil-records', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(oilRecordPayload),
+        });
+      } catch (fetchErr) {
+        console.error('Direct POST /api/oil-records failed:', fetchErr);
+      }
+    }
 
     setSavedSuccessMessage(
       numberOfOils === 1
