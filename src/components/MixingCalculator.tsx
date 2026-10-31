@@ -60,6 +60,7 @@ import {
   BottleOption,
 } from '../services/pricing';
 import { PriceChartModal } from './PriceChartModal';
+import { addOilRecord } from '../services/oilService';
 
 interface MixingCalculatorProps {
   perfumes: Perfume[];
@@ -515,10 +516,27 @@ export const MixingCalculator: React.FC<MixingCalculatorProps> = ({
       notes: formulationNotes.trim() || undefined,
     });
 
+    // Automatically log oil consumption to Oil Tracker (POST /api/oil-records)
+    const exactOilGrams = Number(multiCalcResult.totalOilGrams.toFixed(2));
+    const nowStr = new Date().toISOString().split('T')[0];
+    const autoNotes = `Auto-logged from Mixing Calculator: ${multiCalcResult.bottleSize}ml blend`;
+
+    addOilRecord({
+      date: nowStr,
+      oil_name: formulaSummaryName,
+      type: 'consumption',
+      quantity: exactOilGrams,
+      unit: 'g',
+      amount: priceResult?.price ? Number(priceResult.price) : 0,
+      notes: autoNotes,
+    }).catch((err) => {
+      console.warn('Failed auto-sync to oil_records table:', err);
+    });
+
     setSavedSuccessMessage(
       numberOfOils === 1
-        ? `Formula for ${primaryPerfume.name} saved under Sales Man "${currentSalesMan.name}" (${priceResult.price} ${currencySymbol}).`
-        : `${numberOfOils}-Oil Blend saved under Sales Man "${currentSalesMan.name}" with Highest Category ${activeCategory} (${priceResult.price} ${currencySymbol}).`
+        ? `Formula for ${primaryPerfume.name} saved under Sales Man "${currentSalesMan.name}" (${priceResult.price} ${currencySymbol}) • Auto-logged ${exactOilGrams}g to Oil Tracker.`
+        : `${numberOfOils}-Oil Blend saved under Sales Man "${currentSalesMan.name}" with Highest Category ${activeCategory} (${priceResult.price} ${currencySymbol}) • Auto-logged ${exactOilGrams}g to Oil Tracker.`
     );
 
     setTimeout(() => setSavedSuccessMessage(''), 7000);

@@ -19,6 +19,11 @@ import {
   Scale,
   FlaskConical,
   X,
+  Layers,
+  ChevronRight,
+  ChevronDown,
+  BarChart3,
+  Check,
 } from 'lucide-react';
 import { OilRecord, OilRecordType, AppSettings, Perfume } from '../types';
 import { fetchOilRecords, addOilRecord, deleteOilRecord } from '../services/oilService';
@@ -29,6 +34,7 @@ interface OilTrackerProps {
 }
 
 type PeriodFilter = 'daily' | 'monthly' | 'custom' | 'all';
+type SourceFilter = 'all' | 'auto' | 'manual';
 
 export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] }) => {
   // Data state
@@ -40,7 +46,12 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | OilRecordType>('all');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('monthly');
+  const [selectedPerfumeFilter, setSelectedPerfumeFilter] = useState<string | null>(null);
+  const [showPerfumeBreakdown, setShowPerfumeBreakdown] = useState(true);
+
+  // Date selectors
   const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const d = new Date();
@@ -53,7 +64,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
   });
   const [customEndDate, setCustomEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
-  // Form states
+  // Form states (Fallback manual entry)
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formData, setFormData] = useState<{
     date: string;
@@ -69,7 +80,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
     type: 'consumption',
     quantity: '',
     amount: '',
-    unit: 'ml',
+    unit: 'g',
     notes: '',
   });
 
@@ -78,7 +89,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
 
   const currencySymbol = settings.currencySymbol || '$';
 
-  // Load records on mount & listen to background updates
+  // Load records on mount & listen to background updates (e.g. from Mixing Calculator)
   useEffect(() => {
     loadRecords();
 
@@ -103,10 +114,15 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
     }
   };
 
-  // Popular oil suggestions from existing catalog
+  // Helper: check if a record was automatically logged by the Mixing Calculator
+  const isAutoLogged = (r: OilRecord): boolean => {
+    const text = (r.notes || '').toLowerCase();
+    return text.includes('auto-logged') || text.includes('mixing calculator') || text.includes('blend');
+  };
+
+  // Popular oil suggestions for manual input
   const oilSuggestions = useMemo(() => {
     const names = new Set<string>();
-    // High-profile atelier defaults
     const defaults = [
       'Bergamot Reggio Calabria',
       'Oud Cambodi Pure Extract',
@@ -132,7 +148,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
     return Array.from(names).slice(0, 30);
   }, [perfumes]);
 
-  // Filtering records based on active period and query
+  // Filtered records for the Data Table
   const filteredRecords = useMemo(() => {
     return records.filter((r) => {
       // 1. Text search
@@ -148,7 +164,17 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
         return false;
       }
 
-      // 3. Date / Period filter
+      // 3. Source filter (Auto-logged vs Manual)
+      const auto = isAutoLogged(r);
+      if (sourceFilter === 'auto' && !auto) return false;
+      if (sourceFilter === 'manual' && auto) return false;
+
+      // 4. Selected perfume filter from breakdown card
+      if (selectedPerfumeFilter && r.oil_name !== selectedPerfumeFilter) {
+        return false;
+      }
+
+      // 5. Date / Period filter
       const recordDate = r.date || (r.created_at ? r.created_at.split('T')[0] : '');
 
       if (periodFilter === 'daily') {
@@ -165,90 +191,167 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
       }
       return true; // 'all'
     });
-  }, [records, searchQuery, typeFilter, periodFilter, selectedDate, selectedMonth, customStartDate, customEndDate]);
+  }, [
+    records,
+    searchQuery,
+    typeFilter,
+    sourceFilter,
+    selectedPerfumeFilter,
+    periodFilter,
+    selectedDate,
+    selectedMonth,
+    customStartDate,
+    customEndDate,
+  ]);
 
-  // Specific calculation for Daily Metrics
+  // Daily Metrics
   const dailyMetrics = useMemo(() => {
     const dailyRecords = records.filter(
       (r) => (r.date || (r.created_at ? r.created_at.split('T')[0] : '')) === selectedDate
     );
-    let consumptionMl = 0;
+    let consumptionGrams = 0;
     let incomeAmount = 0;
     let consumptionAmount = 0;
+    let autoCount = 0;
 
     dailyRecords.forEach((r) => {
+      if (isAutoLogged(r)) autoCount += 1;
       if (r.type === 'consumption') {
-        consumptionMl += Number(r.quantity) || 0;
+        consumptionGrams += Number(r.quantity) || 0;
         consumptionAmount += Number(r.amount) || 0;
       } else if (r.type === 'income') {
         incomeAmount += Number(r.amount) || 0;
       }
     });
 
-    const netBalance = incomeAmount - consumptionAmount;
     return {
-      consumptionMl,
+      consumptionGrams,
       incomeAmount,
       consumptionAmount,
-      netBalance,
+      netBalance: incomeAmount - consumptionAmount,
       count: dailyRecords.length,
+      autoCount,
     };
   }, [records, selectedDate]);
 
-  // Specific calculation for Monthly Metrics
+  // Monthly Metrics
   const monthlyMetrics = useMemo(() => {
     const monthRecords = records.filter((r) =>
       (r.date || (r.created_at ? r.created_at.split('T')[0] : '')).startsWith(selectedMonth)
     );
-    let consumptionMl = 0;
+    let consumptionGrams = 0;
     let incomeAmount = 0;
     let consumptionAmount = 0;
+    let autoCount = 0;
 
     monthRecords.forEach((r) => {
+      if (isAutoLogged(r)) autoCount += 1;
       if (r.type === 'consumption') {
-        consumptionMl += Number(r.quantity) || 0;
+        consumptionGrams += Number(r.quantity) || 0;
         consumptionAmount += Number(r.amount) || 0;
       } else if (r.type === 'income') {
         incomeAmount += Number(r.amount) || 0;
       }
     });
 
-    const netBalance = incomeAmount - consumptionAmount;
     return {
-      consumptionMl,
+      consumptionGrams,
       incomeAmount,
       consumptionAmount,
-      netBalance,
+      netBalance: incomeAmount - consumptionAmount,
       count: monthRecords.length,
+      autoCount,
     };
   }, [records, selectedMonth]);
 
-  // Custom period or Active Filtered Metrics
+  // Active Period Metrics
   const activePeriodMetrics = useMemo(() => {
-    let consumptionMl = 0;
+    let consumptionGrams = 0;
     let incomeAmount = 0;
     let consumptionAmount = 0;
+    let autoCount = 0;
 
     filteredRecords.forEach((r) => {
+      if (isAutoLogged(r)) autoCount += 1;
       if (r.type === 'consumption') {
-        consumptionMl += Number(r.quantity) || 0;
+        consumptionGrams += Number(r.quantity) || 0;
         consumptionAmount += Number(r.amount) || 0;
       } else if (r.type === 'income') {
         incomeAmount += Number(r.amount) || 0;
       }
     });
 
-    const netBalance = incomeAmount - consumptionAmount;
     return {
-      consumptionMl,
+      consumptionGrams,
       incomeAmount,
       consumptionAmount,
-      netBalance,
+      netBalance: incomeAmount - consumptionAmount,
       count: filteredRecords.length,
+      autoCount,
     };
   }, [filteredRecords]);
 
-  // Handle Form Submit
+  // Aggregated breakdown: Total consumed grams per perfume/oil in current period window
+  const consumptionByPerfume = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        oil_name: string;
+        totalGrams: number;
+        batchCount: number;
+        autoLoggedCount: number;
+        manualCount: number;
+        lastDate: string;
+      }
+    >();
+
+    const periodRecords = records.filter((r) => {
+      if (r.type !== 'consumption') return false;
+      const recordDate = r.date || (r.created_at ? r.created_at.split('T')[0] : '');
+      if (periodFilter === 'daily') return recordDate === selectedDate;
+      if (periodFilter === 'monthly') return recordDate.startsWith(selectedMonth);
+      if (periodFilter === 'custom') {
+        if (!recordDate) return true;
+        if (customStartDate && recordDate < customStartDate) return false;
+        if (customEndDate && recordDate > customEndDate) return false;
+        return true;
+      }
+      return true;
+    });
+
+    periodRecords.forEach((r) => {
+      const name = r.oil_name.trim();
+      const existing = map.get(name) || {
+        oil_name: name,
+        totalGrams: 0,
+        batchCount: 0,
+        autoLoggedCount: 0,
+        manualCount: 0,
+        lastDate: r.date,
+      };
+
+      existing.totalGrams += Number(r.quantity) || 0;
+      existing.batchCount += 1;
+      if (isAutoLogged(r)) existing.autoLoggedCount += 1;
+      else existing.manualCount += 1;
+
+      if (r.date && (!existing.lastDate || r.date > existing.lastDate)) {
+        existing.lastDate = r.date;
+      }
+      map.set(name, existing);
+    });
+
+    const items = Array.from(map.values()).sort((a, b) => b.totalGrams - a.totalGrams);
+    const totalGramsAll = items.reduce((sum, item) => sum + item.totalGrams, 0);
+
+    return {
+      items,
+      totalGrams: totalGramsAll,
+      perfumeCount: items.length,
+    };
+  }, [records, periodFilter, selectedDate, selectedMonth, customStartDate, customEndDate]);
+
+  // Handle Form Submit for Manual Entries
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.oil_name.trim()) {
@@ -277,23 +380,22 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
         quantity: qty,
         amount: amt,
         unit: formData.unit,
-        notes: formData.notes.trim(),
+        notes: formData.notes.trim() || 'Manual Atelier Entry',
       });
 
       setRecords((prev) => [added, ...prev.filter((r) => r.id !== added.id)]);
       setFeedback({
         type: 'success',
-        message: `Added ${formData.type} record for "${formData.oil_name}" (${qty} ${formData.unit}, ${currencySymbol} ${amt.toFixed(2)})`,
+        message: `Saved ${formData.type} record for "${formData.oil_name}" (${qty} ${formData.unit})`,
       });
 
-      // Reset form fields
       setFormData({
         date: new Date().toISOString().split('T')[0],
         oil_name: '',
         type: 'consumption',
         quantity: '',
         amount: '',
-        unit: 'ml',
+        unit: 'g',
         notes: '',
       });
       setIsFormOpen(false);
@@ -313,7 +415,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
       await deleteOilRecord(recordToDelete.id);
       setRecords((prev) => prev.filter((r) => r.id !== recordToDelete.id));
       setRecordToDelete(null);
-      setFeedback({ type: 'success', message: 'Record successfully deleted from database.' });
+      setFeedback({ type: 'success', message: 'Record removed from oil_records table.' });
       setTimeout(() => setFeedback(null), 4000);
     } catch (err: any) {
       setFeedback({ type: 'error', message: err?.message || 'Failed to delete record.' });
@@ -323,20 +425,22 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
   // Export to CSV
   const handleExportCsv = () => {
     if (filteredRecords.length === 0) return;
-    const headers = ['ID', 'Date', 'Oil Name', 'Type', 'Quantity', 'Unit', 'Amount', 'Currency', 'Notes'];
+    const headers = ['ID', 'Date', 'Oil Name', 'Type', 'Quantity', 'Unit', 'Amount', 'Currency', 'Source', 'Notes'];
     const rows = filteredRecords.map((r) => [
       r.id,
       r.date,
       `"${(r.oil_name || '').replace(/"/g, '""')}"`,
       r.type,
       r.quantity,
-      r.unit || 'ml',
+      r.unit || 'g',
       r.amount,
       currencySymbol,
+      isAutoLogged(r) ? 'Calculator Auto-Logged' : 'Manual Entry',
       `"${(r.notes || '').replace(/"/g, '""')}"`,
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const csvContent =
+      'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
@@ -361,11 +465,11 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
               <h1 className="font-serif-luxury text-2xl font-bold text-stone-900 tracking-wide flex items-center gap-2">
                 Essential Oil Tracker
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  Cloud D1 Synced
+                  D1 Auto-Sync Active
                 </span>
               </h1>
               <p className="text-xs text-stone-500">
-                Monitor atelier essential oils inventory, consumption rates, and daily/monthly income
+                Automated consumption logging from Mixing Calculator & daily/monthly income analytics
               </p>
             </div>
           </div>
@@ -396,7 +500,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-gradient-to-r from-emerald-700 to-emerald-800 hover:from-emerald-800 hover:to-emerald-900 rounded-xl shadow-md shadow-emerald-900/20 transition-all group"
           >
             <PlusCircle className="w-4 h-4 transition-transform group-hover:rotate-90" />
-            <span>{isFormOpen ? 'Close Form' : 'Add Oil Record'}</span>
+            <span>{isFormOpen ? 'Close Form' : 'Manual Entry'}</span>
           </button>
         </div>
       </div>
@@ -418,10 +522,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
             )}
             <span>{feedback.message}</span>
           </div>
-          <button
-            onClick={() => setFeedback(null)}
-            className="text-stone-400 hover:text-stone-600 p-1"
-          >
+          <button onClick={() => setFeedback(null)} className="text-stone-400 hover:text-stone-600 p-1">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -433,7 +534,10 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
           {/* Period Tabs */}
           <div className="flex items-center bg-stone-100 p-1 rounded-xl self-start">
             <button
-              onClick={() => setPeriodFilter('daily')}
+              onClick={() => {
+                setPeriodFilter('daily');
+                setSelectedPerfumeFilter(null);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 periodFilter === 'daily'
                   ? 'bg-white text-emerald-900 shadow-xs font-bold'
@@ -443,7 +547,10 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
               Daily View
             </button>
             <button
-              onClick={() => setPeriodFilter('monthly')}
+              onClick={() => {
+                setPeriodFilter('monthly');
+                setSelectedPerfumeFilter(null);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 periodFilter === 'monthly'
                   ? 'bg-white text-emerald-900 shadow-xs font-bold'
@@ -453,7 +560,10 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
               Monthly View
             </button>
             <button
-              onClick={() => setPeriodFilter('custom')}
+              onClick={() => {
+                setPeriodFilter('custom');
+                setSelectedPerfumeFilter(null);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 periodFilter === 'custom'
                   ? 'bg-white text-emerald-900 shadow-xs font-bold'
@@ -463,7 +573,10 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
               Custom Date
             </button>
             <button
-              onClick={() => setPeriodFilter('all')}
+              onClick={() => {
+                setPeriodFilter('all');
+                setSelectedPerfumeFilter(null);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 periodFilter === 'all'
                   ? 'bg-white text-emerald-900 shadow-xs font-bold'
@@ -537,9 +650,9 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
         </div>
       </div>
 
-      {/* Top Metrics Cards (Requirement 2) */}
+      {/* Top Metrics Cards (Requirement 1 & 2) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Metric 1: Total Consumption (ML) */}
+        {/* Metric 1: Total Consumption in Grams & ML */}
         <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs relative overflow-hidden group hover:border-amber-300 transition-all">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-stone-500">
@@ -551,27 +664,35 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="font-serif-luxury text-3xl font-bold text-stone-900">
-              {activePeriodMetrics.consumptionMl.toLocaleString(undefined, {
-                minimumFractionDigits: 1,
-                maximumFractionDigits: 1,
+              {activePeriodMetrics.consumptionGrams.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
               })}
             </span>
-            <span className="text-xs font-mono font-bold text-amber-700 uppercase">ML</span>
+            <span className="text-xs font-mono font-bold text-amber-700 uppercase">Grams</span>
+            <span className="text-xs text-stone-400">
+              ({activePeriodMetrics.consumptionGrams.toFixed(1)} ML eq)
+            </span>
           </div>
 
           <div className="mt-3 pt-3 border-t border-stone-100 flex items-center justify-between text-xs">
             <span className="text-stone-500 flex items-center gap-1">
-              <ArrowDownRight className="w-3.5 h-3.5 text-amber-600" />
-              Usage Cost:
+              <FlaskConical className="w-3.5 h-3.5 text-emerald-600" />
+              Auto-Logged from Mixing:
             </span>
-            <span className="font-mono font-bold text-stone-800">
-              {currencySymbol} {activePeriodMetrics.consumptionAmount.toFixed(2)}
+            <span className="font-mono font-bold text-emerald-800">
+              {activePeriodMetrics.autoCount} blends
             </span>
           </div>
 
-          {/* Sub-view indicators */}
-          <div className="mt-2 text-[11px] text-stone-400 font-mono">
-            Daily: {dailyMetrics.consumptionMl.toFixed(1)} ML • Monthly: {monthlyMetrics.consumptionMl.toFixed(1)} ML
+          {/* Sub-view indicators: Daily vs Monthly */}
+          <div className="mt-2 text-[11px] text-stone-500 font-mono flex items-center justify-between border-t border-stone-50 pt-1.5">
+            <span>
+              Daily: <strong className="text-stone-900">{dailyMetrics.consumptionGrams.toFixed(2)} g</strong>
+            </span>
+            <span>
+              Monthly: <strong className="text-stone-900">{monthlyMetrics.consumptionGrams.toFixed(2)} g</strong>
+            </span>
           </div>
         </div>
 
@@ -598,16 +719,21 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
           <div className="mt-3 pt-3 border-t border-stone-100 flex items-center justify-between text-xs">
             <span className="text-stone-500 flex items-center gap-1">
               <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600" />
-              Transactions:
+              Sales Transactions:
             </span>
             <span className="font-mono font-bold text-stone-800">
               {filteredRecords.filter((r) => r.type === 'income').length} Sales
             </span>
           </div>
 
-          {/* Sub-view indicators */}
-          <div className="mt-2 text-[11px] text-stone-400 font-mono">
-            Daily: {currencySymbol} {dailyMetrics.incomeAmount.toFixed(2)} • Monthly: {currencySymbol} {monthlyMetrics.incomeAmount.toFixed(2)}
+          {/* Sub-view indicators: Daily vs Monthly */}
+          <div className="mt-2 text-[11px] text-stone-500 font-mono flex items-center justify-between border-t border-stone-50 pt-1.5">
+            <span>
+              Daily: <strong className="text-stone-900">{currencySymbol} {dailyMetrics.incomeAmount.toFixed(2)}</strong>
+            </span>
+            <span>
+              Monthly: <strong className="text-stone-900">{currencySymbol} {monthlyMetrics.incomeAmount.toFixed(2)}</strong>
+            </span>
           </div>
         </div>
 
@@ -655,14 +781,138 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
             </span>
           </div>
 
-          {/* Sub-view indicators */}
-          <div className="mt-2 text-[11px] text-stone-400 font-mono">
-            Daily Net: {currencySymbol} {dailyMetrics.netBalance.toFixed(2)} • Monthly Net: {currencySymbol} {monthlyMetrics.netBalance.toFixed(2)}
+          {/* Sub-view indicators: Daily vs Monthly Net */}
+          <div className="mt-2 text-[11px] text-stone-500 font-mono flex items-center justify-between border-t border-stone-50 pt-1.5">
+            <span>
+              Daily Net: <strong className={dailyMetrics.netBalance >= 0 ? 'text-emerald-800' : 'text-rose-800'}>{currencySymbol} {dailyMetrics.netBalance.toFixed(2)}</strong>
+            </span>
+            <span>
+              Monthly Net: <strong className={monthlyMetrics.netBalance >= 0 ? 'text-emerald-800' : 'text-rose-800'}>{currencySymbol} {monthlyMetrics.netBalance.toFixed(2)}</strong>
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Form Section: Add Record (Requirement 2) */}
+      {/* NEW: Total Consumed Grams Per Perfume Breakdown Section (Requirement 2) */}
+      <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
+        <div className="p-4 border-b border-stone-200 flex items-center justify-between bg-stone-50/70">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-800">
+              <BarChart3 className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-serif-luxury text-sm font-bold text-stone-900">
+                Consumed Grams Per Perfume
+              </h3>
+              <p className="text-[11px] text-stone-500">
+                Aggregated consumption for{' '}
+                <span className="font-semibold text-stone-700">
+                  {periodFilter === 'daily'
+                    ? `Day (${selectedDate})`
+                    : periodFilter === 'monthly'
+                    ? `Month (${selectedMonth})`
+                    : periodFilter === 'custom'
+                    ? `Custom Period`
+                    : 'All Time'}
+                </span>{' '}
+                • {consumptionByPerfume.perfumeCount} unique oils used
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {selectedPerfumeFilter && (
+              <button
+                onClick={() => setSelectedPerfumeFilter(null)}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
+              >
+                <span>Clear Filter: {selectedPerfumeFilter}</span>
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            <button
+              onClick={() => setShowPerfumeBreakdown(!showPerfumeBreakdown)}
+              className="p-1.5 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition-colors"
+              title={showPerfumeBreakdown ? 'Collapse breakdown' : 'Expand breakdown'}
+            >
+              {showPerfumeBreakdown ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {showPerfumeBreakdown && (
+          <div className="p-4">
+            {consumptionByPerfume.items.length === 0 ? (
+              <div className="py-6 text-center text-stone-400 text-xs">
+                No oil consumption logged yet for this period window. Compound a blend in the Mixing Calculator or add a record.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {consumptionByPerfume.items.map((perfume) => {
+                  const percentOfTotal =
+                    consumptionByPerfume.totalGrams > 0
+                      ? (perfume.totalGrams / consumptionByPerfume.totalGrams) * 100
+                      : 0;
+                  const isSelected = selectedPerfumeFilter === perfume.oil_name;
+
+                  return (
+                    <div
+                      key={perfume.oil_name}
+                      onClick={() =>
+                        setSelectedPerfumeFilter(isSelected ? null : perfume.oil_name)
+                      }
+                      className={`cursor-pointer rounded-xl p-3.5 border transition-all relative overflow-hidden group ${
+                        isSelected
+                          ? 'bg-emerald-50/80 border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm'
+                          : 'bg-stone-50/60 hover:bg-stone-50 border-stone-200 hover:border-emerald-300'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <Droplets className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                            <h4 className="text-xs font-bold text-stone-900 truncate" title={perfume.oil_name}>
+                              {perfume.oil_name}
+                            </h4>
+                          </div>
+                          <div className="mt-1 flex items-center gap-2 text-[10px] text-stone-500">
+                            <span>{perfume.batchCount} {perfume.batchCount === 1 ? 'batch' : 'batches'}</span>
+                            {perfume.autoLoggedCount > 0 && (
+                              <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
+                                <FlaskConical className="w-2.5 h-2.5 inline" />
+                                {perfume.autoLoggedCount} auto
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-right flex-shrink-0">
+                          <div className="font-mono text-sm font-extrabold text-stone-900">
+                            {perfume.totalGrams.toFixed(2)} <span className="text-[10px] font-sans font-bold text-amber-700">g</span>
+                          </div>
+                          <div className="text-[10px] text-stone-400 font-mono">
+                            {percentOfTotal.toFixed(1)}% of total
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Visual progress bar */}
+                      <div className="mt-2.5 w-full bg-stone-200/80 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-emerald-600 to-amber-500 h-full rounded-full transition-all"
+                          style={{ width: `${Math.min(100, Math.max(5, percentOfTotal))}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Manual Form Section (Fallback for adjustments or ad-hoc inventory) */}
       {isFormOpen && (
         <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-5 shadow-lg shadow-emerald-950/5 animate-fadeIn">
           <div className="flex items-center justify-between pb-3 border-b border-stone-200 mb-4">
@@ -671,7 +921,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                 <PlusCircle className="w-4 h-4" />
               </div>
               <h3 className="font-serif-luxury text-base font-bold text-stone-900">
-                Register New Essential Oil Record
+                Manual Atelier Ledger Entry
               </h3>
             </div>
             <button
@@ -689,15 +939,13 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wide mb-1">
                   Date <span className="text-rose-500">*</span>
                 </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    required
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 text-xs font-medium focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none"
-                  />
-                </div>
+                <input
+                  type="date"
+                  required
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 text-xs font-medium focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none"
+                />
               </div>
 
               {/* Field 2: Record Type (Income vs Consumption) */}
@@ -744,21 +992,12 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                     step="0.01"
                     min="0.01"
                     required
-                    placeholder="e.g. 100"
+                    placeholder="e.g. 10.80"
                     value={formData.quantity}
                     onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                     className="flex-1 px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 text-xs font-medium focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none"
                   />
                   <div className="flex bg-stone-100 rounded-xl p-0.5 border border-stone-200">
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, unit: 'ml' })}
-                      className={`px-2 py-1.5 text-[11px] font-bold rounded-lg ${
-                        formData.unit === 'ml' ? 'bg-white text-emerald-900 shadow-2xs' : 'text-stone-500'
-                      }`}
-                    >
-                      ML
-                    </button>
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, unit: 'g' })}
@@ -767,6 +1006,15 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                       }`}
                     >
                       G
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, unit: 'ml' })}
+                      className={`px-2 py-1.5 text-[11px] font-bold rounded-lg ${
+                        formData.unit === 'ml' ? 'bg-white text-emerald-900 shadow-2xs' : 'text-stone-500'
+                      }`}
+                    >
+                      ML
                     </button>
                   </div>
                 </div>
@@ -786,7 +1034,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                     step="0.01"
                     min="0"
                     required
-                    placeholder="e.g. 85.00"
+                    placeholder="e.g. 0.00"
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                     className="w-full pl-8 pr-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 text-xs font-medium focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none"
@@ -805,7 +1053,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                   type="text"
                   list="oil-suggestions-list"
                   required
-                  placeholder="e.g. Bergamot Reggio Calabria, Oud Cambodi..."
+                  placeholder="e.g. Bergamot Reggio Calabria, 212 Men..."
                   value={formData.oil_name}
                   onChange={(e) => setFormData({ ...formData, oil_name: e.target.value })}
                   className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 text-xs font-medium focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none"
@@ -815,29 +1063,16 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                     <option key={idx} value={oil} />
                   ))}
                 </datalist>
-                <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[10px] text-stone-400 font-medium">Quick select:</span>
-                  {['Bergamot', 'Oud', 'Rose Absolu', 'Lavender Grasse', 'Cedarwood'].map((quick) => (
-                    <button
-                      key={quick}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, oil_name: quick })}
-                      className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 hover:bg-emerald-100 hover:text-emerald-900 text-stone-600 font-medium transition-colors"
-                    >
-                      {quick}
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {/* Field 6: Notes */}
               <div>
                 <label className="block text-xs font-bold text-stone-700 uppercase tracking-wide mb-1">
-                  Notes / Atelier Batch / Customer (Optional)
+                  Notes / Batch Details
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Batch #B-204, VIP bespoke bottle compounding..."
+                  placeholder="e.g. Manual inventory refill, VIP flacon compounding..."
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 text-xs font-medium focus:ring-2 focus:ring-emerald-600 focus:bg-white focus:outline-none"
@@ -876,7 +1111,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
         </div>
       )}
 
-      {/* Data Table Section (Requirement 2) */}
+      {/* Data Table Section with Auto-Logged Indicators */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
         {/* Table Search & Filter Toolbar */}
         <div className="p-4 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50/60">
@@ -885,7 +1120,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
               <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="Search oil name, customer, batch notes..."
+                placeholder="Search perfume name, formula notes, bottle size..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 bg-white border border-stone-300 rounded-xl text-stone-900 text-xs font-medium placeholder-stone-400 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
@@ -936,19 +1171,55 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
               </button>
             </div>
 
+            {/* Filter by Source (Auto-logged vs Manual) */}
+            <div className="flex items-center bg-white border border-stone-300 rounded-xl p-0.5 shadow-2xs">
+              <button
+                onClick={() => setSourceFilter('all')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  sourceFilter === 'all'
+                    ? 'bg-stone-800 text-white font-bold'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                All Sources
+              </button>
+              <button
+                onClick={() => setSourceFilter('auto')}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  sourceFilter === 'auto'
+                    ? 'bg-emerald-700 text-white font-bold'
+                    : 'text-stone-600 hover:text-emerald-800'
+                }`}
+              >
+                <FlaskConical className="w-3 h-3" />
+                <span>Auto-Logged</span>
+              </button>
+              <button
+                onClick={() => setSourceFilter('manual')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  sourceFilter === 'manual'
+                    ? 'bg-stone-800 text-white font-bold'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                Manual
+              </button>
+            </div>
+
             <div className="text-xs text-stone-500 font-mono pl-1">
               Showing <span className="font-bold text-stone-900">{filteredRecords.length}</span> records
             </div>
           </div>
         </div>
 
-        {/* Desktop Table View */}
+        {/* Table View */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-stone-200 bg-stone-100/70 text-[11px] font-bold text-stone-600 uppercase tracking-wider">
                 <th className="py-3 px-4">Date</th>
-                <th className="py-3 px-4">Oil Name</th>
+                <th className="py-3 px-4">Oil / Perfume Blend</th>
+                <th className="py-3 px-4">Source</th>
                 <th className="py-3 px-4">Type</th>
                 <th className="py-3 px-4 text-right">Quantity</th>
                 <th className="py-3 px-4 text-right">Amount</th>
@@ -959,19 +1230,19 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
             <tbody className="divide-y divide-stone-100 text-xs">
               {filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-stone-500">
+                  <td colSpan={8} className="py-12 text-center text-stone-500">
                     <div className="max-w-xs mx-auto space-y-2">
                       <Droplets className="w-8 h-8 text-stone-300 mx-auto" />
-                      <p className="font-semibold text-stone-700">No oil records match your filters</p>
+                      <p className="font-semibold text-stone-700">No records match your filters</p>
                       <p className="text-[11px] text-stone-400">
-                        Try clearing search query or add a new record to the atelier ledger.
+                        Calculate and save a mix in the Mixing Calculator to auto-sync, or add a manual entry.
                       </p>
                       <button
                         onClick={() => setIsFormOpen(true)}
                         className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"
                       >
                         <PlusCircle className="w-3.5 h-3.5" />
-                        <span>Add First Record</span>
+                        <span>Add Manual Record</span>
                       </button>
                     </div>
                   </td>
@@ -979,11 +1250,14 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
               ) : (
                 filteredRecords.map((record) => {
                   const isIncome = record.type === 'income';
+                  const auto = isAutoLogged(record);
 
                   return (
                     <tr
                       key={record.id}
-                      className="hover:bg-stone-50/80 transition-colors group"
+                      className={`hover:bg-stone-50/80 transition-colors group ${
+                        auto ? 'bg-emerald-50/20' : ''
+                      }`}
                     >
                       {/* Date */}
                       <td className="py-3.5 px-4 font-mono font-medium text-stone-700 whitespace-nowrap">
@@ -1001,10 +1275,24 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                               isIncome ? 'bg-emerald-500' : 'bg-rose-500'
                             }`}
                           />
-                          <span className="truncate max-w-[220px]" title={record.oil_name}>
+                          <span className="truncate max-w-[240px]" title={record.oil_name}>
                             {record.oil_name}
                           </span>
                         </div>
+                      </td>
+
+                      {/* Source Badge (Requirement 2) */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        {auto ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                            <FlaskConical className="w-3 h-3 text-emerald-600" />
+                            Auto-Logged
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-stone-100 text-stone-600 border border-stone-200">
+                            Manual
+                          </span>
+                        )}
                       </td>
 
                       {/* Type Badge */}
@@ -1026,11 +1314,11 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-stone-800 whitespace-nowrap">
                         <span className={isIncome ? 'text-emerald-900' : 'text-stone-900'}>
                           {Number(record.quantity).toLocaleString(undefined, {
-                            minimumFractionDigits: 1,
+                            minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}{' '}
-                          <span className="text-[10px] text-stone-500 uppercase font-sans">
-                            {record.unit || 'ml'}
+                          <span className="text-[10px] text-stone-500 uppercase font-sans font-bold">
+                            {record.unit || 'g'}
                           </span>
                         </span>
                       </td>
@@ -1083,7 +1371,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                   Delete Oil Record?
                 </h3>
                 <p className="text-xs text-stone-500">
-                  This action will permanently delete this transaction from the database.
+                  This transaction will be permanently deleted from the database.
                 </p>
               </div>
             </div>
@@ -1094,13 +1382,15 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                 <span className="font-bold text-stone-900">{recordToDelete.oil_name}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-stone-500">Type:</span>
-                <span className="font-bold uppercase capitalize">{recordToDelete.type}</span>
+                <span className="text-stone-500">Source:</span>
+                <span className="font-bold text-emerald-800">
+                  {isAutoLogged(recordToDelete) ? 'Auto-Logged (Calculator)' : 'Manual Entry'}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-stone-500">Quantity & Amount:</span>
                 <span className="font-mono font-bold">
-                  {recordToDelete.quantity} {recordToDelete.unit || 'ml'} / {currencySymbol}{' '}
+                  {recordToDelete.quantity} {recordToDelete.unit || 'g'} / {currencySymbol}{' '}
                   {Number(recordToDelete.amount).toFixed(2)}
                 </span>
               </div>

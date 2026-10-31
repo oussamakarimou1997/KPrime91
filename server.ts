@@ -392,6 +392,7 @@ app.post('/api/oil-records', (req, res) => {
       quantity: Math.max(0, parseFloat(data.quantity) || 0),
       amount: Math.max(0, parseFloat(data.amount) || 0),
       notes: data.notes ? String(data.notes).trim() : '',
+      unit: data.unit || 'g',
       created_at: data.created_at || now,
       updated_at: now,
     };

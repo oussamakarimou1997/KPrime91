@@ -105,6 +105,7 @@ export default {
           quantity: Number(item.quantity) || 0,
           amount: Number(item.amount) || 0,
           notes: item.notes ? String(item.notes).trim() : '',
+          unit: item.unit ? String(item.unit) : 'g',
           created_at: now,
           updated_at: now,
         };

@@ -1,5 +1,16 @@
 [
   {
+    "id": "oil_1793430409666_sg6e4",
+    "date": "2026-10-31",
+    "oil_name": "212 Men",
+    "type": "consumption",
+    "quantity": 10.8,
+    "amount": 60,
+    "notes": "Auto-logged from Mixing Calculator: 36ml blend",
+    "created_at": "2026-10-31T07:06:49.666Z",
+    "updated_at": "2026-10-31T07:06:49.666Z"
+  },
+  {
     "id": "oil_rec_1",
     "date": "2026-10-30",
     "oil_name": "Bergamot Reggio Calabria",
