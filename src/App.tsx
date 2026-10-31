@@ -13,6 +13,7 @@ import { Settings } from './components/Settings';
 import { OilTracker } from './components/OilTracker';
 import { PdfImportModal } from './components/PdfImportModal';
 import { PerfumeDetailModal } from './components/PerfumeDetailModal';
+import { AppLockModal } from './components/AppLockModal';
 import {
   getPerfumes,
   savePerfumes,
@@ -56,6 +57,41 @@ export function App() {
 
   // Modals
   const [isPdfImportOpen, setIsPdfImportOpen] = useState(false);
+
+  // App Lock Authentication State (Session persisted in localStorage)
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('atelier_app_unlocked') !== 'true';
+    } catch {
+      return true;
+    }
+  });
+
+  const handleUnlock = (enteredPasscode: string): boolean => {
+    const configuredPasscode =
+      settings?.appPasscode ||
+      ((import.meta as any).env?.VITE_APP_PASSCODE as string) ||
+      '123456';
+    if (enteredPasscode.trim() === configuredPasscode.trim()) {
+      try {
+        localStorage.setItem('atelier_app_unlocked', 'true');
+      } catch (e) {
+        console.warn('localStorage setItem failed:', e);
+      }
+      setIsLocked(false);
+      return true;
+    }
+    return false;
+  };
+
+  const handleLock = () => {
+    try {
+      localStorage.removeItem('atelier_app_unlocked');
+    } catch (e) {
+      console.warn('localStorage removeItem failed:', e);
+    }
+    setIsLocked(true);
+  };
 
   // Initial Load from LocalStorage + Background Server Sync + Real-time Listeners
   useEffect(() => {
@@ -309,22 +345,33 @@ export function App() {
   };
 
   return (
-    <div className="flex min-h-screen bg-[#faf9f6] text-stone-900 font-sans antialiased selection:bg-emerald-200 selection:text-emerald-950 relative">
-      {/* Left Sidebar Navigation */}
-      <Sidebar
-        currentPage={currentPage}
-        onNavigate={handleNavigate}
-        perfumeCount={perfumes.length}
-        historyCount={history.length}
-        salesmenCount={salesmen.length}
-        settings={settings}
-        onOpenPdfImport={() => setIsPdfImportOpen(true)}
-        mobileOpen={mobileSidebarOpen}
-        onCloseMobile={() => setMobileSidebarOpen(false)}
-      />
+    <div className="min-h-screen bg-[#faf9f6] text-stone-900 font-sans antialiased selection:bg-emerald-200 selection:text-emerald-950 relative">
+      {/* App Lock Password Protection Modal (Blocking Overlay) */}
+      <AppLockModal isOpen={isLocked} onUnlock={handleUnlock} />
 
-      {/* Main App Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+      {/* Main Layout Container - Blurred and interactions disabled when locked */}
+      <div
+        className={`flex min-h-screen transition-all duration-300 ${
+          isLocked ? 'pointer-events-none select-none filter blur-sm' : ''
+        }`}
+        aria-hidden={isLocked}
+      >
+        {/* Left Sidebar Navigation */}
+        <Sidebar
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          perfumeCount={perfumes.length}
+          historyCount={history.length}
+          salesmenCount={salesmen.length}
+          settings={settings}
+          onOpenPdfImport={() => setIsPdfImportOpen(true)}
+          mobileOpen={mobileSidebarOpen}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
+          onLockApp={handleLock}
+        />
+
+        {/* Main App Content Area */}
+        <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
         {/* Sticky Top Header Bar */}
         <Header
           currentPage={currentPage}
@@ -466,6 +513,7 @@ export function App() {
         onSelectToMix={handleSelectPerfumeToMix}
         onEdit={handleEditPerfume}
       />
+      </div>
     </div>
   );
 }

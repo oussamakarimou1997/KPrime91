@@ -101,6 +101,7 @@ export interface AppSettings {
   currencySymbol?: string; // default: 'DH' or '$'
   chatSoundEnabled?: boolean; // default: true
   chatToastsEnabled?: boolean; // default: true
+  appPasscode?: string; // default: "123456"
 }
 
 export type PageId =

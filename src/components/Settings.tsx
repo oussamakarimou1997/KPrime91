@@ -16,6 +16,10 @@ import {
   Sparkles,
   Bell,
   Volume2,
+  Lock,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { AppSettings, Perfume, MixingFormula, SalesMan } from '../types';
 import { exportDatabaseBackupJson, importDatabaseBackupJson } from '../services/storage';
@@ -50,6 +54,8 @@ export const Settings: React.FC<SettingsProps> = ({
   const [newBottleSize, setNewBottleSize] = useState<string>('');
   const [chatSoundEnabled, setChatSoundEnabled] = useState<boolean>(settings.chatSoundEnabled !== false);
   const [chatToastsEnabled, setChatToastsEnabled] = useState<boolean>(settings.chatToastsEnabled !== false);
+  const [appPasscode, setAppPasscode] = useState<string>(settings.appPasscode || '');
+  const [showPasscodeConfig, setShowPasscodeConfig] = useState<boolean>(false);
 
   // Status feedback
   const [successMsg, setSuccessMsg] = useState<string>('');
@@ -79,6 +85,7 @@ export const Settings: React.FC<SettingsProps> = ({
       roundingPrecision: settings.roundingPrecision || 2,
       chatSoundEnabled,
       chatToastsEnabled,
+      appPasscode: appPasscode.trim() || undefined,
     };
 
     onSaveSettings(updated);
@@ -117,6 +124,7 @@ export const Settings: React.FC<SettingsProps> = ({
     setDefaultConcentration(30);
     setChatSoundEnabled(true);
     setChatToastsEnabled(true);
+    setAppPasscode('');
     setSuccessMsg('Settings restored to initial default values.');
     setTimeout(() => setSuccessMsg(''), 4000);
   };
@@ -396,7 +404,50 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
         </div>
 
-        {/* Section 4: Save / Reset Actions */}
+        {/* Section 4: Atelier Access Protection & Master Passcode */}
+        <div className="rounded-2xl bg-white border border-stone-200 p-6 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-stone-800 flex items-center gap-2">
+              <Lock className="w-4 h-4 text-emerald-700" />
+              4. Atelier Access Protection & Master Passcode
+            </h2>
+            <span className="text-[11px] text-stone-500 font-mono">App Lock Security</span>
+          </div>
+
+          <p className="text-xs text-stone-500 leading-relaxed">
+            The Atelier is protected by a master passcode. Unlocked sessions remain valid while your browser session is active. You can re-lock instantly anytime from the sidebar.
+          </p>
+
+          <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 space-y-3">
+            <label htmlFor="atelier-passcode-input" className="block text-xs font-bold text-stone-800 flex items-center gap-1.5">
+              <KeyRound className="w-3.5 h-3.5 text-amber-500" />
+              Custom Master Passcode (leave blank to use default: 123456)
+            </label>
+            <div className="relative max-w-sm">
+              <input
+                id="atelier-passcode-input"
+                type={showPasscodeConfig ? 'text' : 'password'}
+                value={appPasscode}
+                onChange={(e) => setAppPasscode(e.target.value)}
+                placeholder="123456"
+                className="w-full py-2.5 px-3 pr-10 rounded-lg bg-white border border-stone-300 text-stone-900 font-mono text-sm focus:outline-none focus:border-emerald-600 shadow-2xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPasscodeConfig(!showPasscodeConfig)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 transition-colors"
+                title={showPasscodeConfig ? 'Hide passcode' : 'Show passcode'}
+              >
+                {showPasscodeConfig ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-stone-500">
+              Passcode can also be configured via <code className="font-mono bg-stone-200 px-1 py-0.5 rounded text-[10px]">VITE_APP_PASSCODE</code> in environment variables.
+            </p>
+          </div>
+        </div>
+
+        {/* Section 5: Save / Reset Actions */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
           <button
             type="button"

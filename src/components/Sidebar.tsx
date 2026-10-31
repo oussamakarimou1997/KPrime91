@@ -13,6 +13,7 @@ import {
   BarChart3,
   MessageSquare,
   Droplets,
+  Lock,
 } from 'lucide-react';
 import { PageId, AppSettings } from '../types';
 
@@ -28,6 +29,7 @@ interface SidebarProps {
   isOpenMobile?: boolean;
   mobileOpen?: boolean;
   onCloseMobile: () => void;
+  onLockApp?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -42,6 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   mobileOpen,
   onCloseMobile,
+  onLockApp,
 }) => {
   const isMobileActive = mobileOpen !== undefined ? mobileOpen : (isOpenMobile || false);
 
@@ -251,8 +254,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Current Formulation Density Indicator */}
-        <div className="p-3 border-t border-stone-200 bg-stone-50/80">
+        {/* Current Formulation Density Indicator & App Lock */}
+        <div className="p-3 border-t border-stone-200 bg-stone-50/80 space-y-2">
           <div className="rounded-xl bg-white border border-stone-200 p-2.5 space-y-1.5 shadow-xs">
             <div className="flex items-center justify-between text-[10px] text-stone-500">
               <span className="font-semibold">Active Densities:</span>
@@ -275,6 +278,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Lock App Button */}
+          {onLockApp && (
+            <button
+              id="sidebar-lock-app-btn"
+              onClick={() => {
+                onLockApp();
+                onCloseMobile();
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-stone-200 bg-white hover:bg-stone-100 hover:border-amber-300 text-stone-700 hover:text-stone-900 text-xs font-semibold shadow-2xs transition-all cursor-pointer group"
+              title="Lock Atelier session"
+            >
+              <Lock className="w-3.5 h-3.5 text-stone-400 group-hover:text-amber-600 transition-colors" />
+              <span>Lock App</span>
+            </button>
+          )}
         </div>
       </aside>
     </>
