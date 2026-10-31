@@ -12,7 +12,7 @@ run_worker_first = ["/api/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "kprime91-db"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "1a196848-59a7-4669-b0fd-24533eec2120"
 migrations_dir = "migrations"
 
 [vars]
