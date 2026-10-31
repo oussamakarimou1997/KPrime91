@@ -16,6 +16,7 @@ import {
   Users,
   BarChart3,
   User,
+  Droplets,
 } from 'lucide-react';
 import { Perfume, MixingFormula, PageId, AppSettings, SalesMan } from '../types';
 
@@ -221,7 +222,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {/* Action 1: Mixing Calculator */}
           <div
             id="quick-action-calculator"
@@ -241,6 +242,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <div className="mt-4 flex items-center gap-1 text-xs font-bold text-emerald-800 group-hover:translate-x-1 transition-transform">
               Launch Formulator <ArrowRight className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          {/* Action 2: Oil Tracker */}
+          <div
+            id="quick-action-oil-tracker"
+            onClick={() => onNavigate('oil-tracker')}
+            className="group cursor-pointer rounded-xl bg-gradient-to-b from-amber-50/60 to-white border border-amber-200/80 p-5 hover:border-amber-400 transition-all hover:shadow-md flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-10 h-10 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold mb-3 shadow-md shadow-amber-600/20">
+                <Droplets className="w-5 h-5" />
+              </div>
+              <h3 className="font-serif-luxury text-base font-bold text-stone-900 group-hover:text-amber-900 transition-colors">
+                Oil Tracker
+              </h3>
+              <p className="text-xs text-stone-600 mt-1 leading-relaxed">
+                Essential oils inventory, consumption rates, and daily/monthly income tracking.
+              </p>
+            </div>
+            <div className="mt-4 flex items-center gap-1 text-xs font-bold text-amber-800 group-hover:translate-x-1 transition-transform">
+              Open Oil Ledger <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </div>
 

@@ -83,6 +83,49 @@ export default {
       if (path.startsWith('/api/similar-perfume/history/') && method === 'DELETE') { const id = decodeURIComponent(path.slice('/api/similar-perfume/history/'.length)); await env.DB.prepare('DELETE FROM app_records WHERE collection=? AND id=?').bind('similar_history', id).run(); return json({ success: true }); }
       if (path === '/api/similar-perfume/history' && method === 'DELETE') { await env.DB.prepare("DELETE FROM app_records WHERE collection='similar_history'").run(); return json({ success: true, count: 0 }); }
 
+      if (path === '/api/oil-records' && method === 'GET') {
+        try {
+          const res = await env.DB.prepare('SELECT * FROM oil_records ORDER BY date DESC, created_at DESC').all<any>();
+          return json({ records: res.results, count: res.results.length });
+        } catch {
+          const fallback = await list(env.DB, 'oil_records');
+          return json({ records: fallback, count: fallback.length });
+        }
+      }
+      if (path === '/api/oil-records' && method === 'POST') {
+        const item = await body(request);
+        if (!item || !item.oil_name) return error('Oil name is required');
+        const id = String(item.id || `oil_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
+        const now = new Date().toISOString();
+        const record = {
+          id,
+          date: item.date || now.split('T')[0],
+          oil_name: String(item.oil_name).trim(),
+          type: item.type === 'consumption' ? 'consumption' : 'income',
+          quantity: Number(item.quantity) || 0,
+          amount: Number(item.amount) || 0,
+          notes: item.notes ? String(item.notes).trim() : '',
+          created_at: now,
+          updated_at: now,
+        };
+        try {
+          await env.DB.prepare('INSERT INTO oil_records (id, date, oil_name, type, quantity, amount, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(record.id, record.date, record.oil_name, record.type, record.quantity, record.amount, record.notes, record.created_at, record.updated_at).run();
+        } catch {
+          await saveOne(env.DB, 'oil_records', record);
+        }
+        return json({ success: true, record });
+      }
+      if (path.startsWith('/api/oil-records/') && method === 'DELETE') {
+        const id = decodeURIComponent(path.slice('/api/oil-records/'.length));
+        try {
+          await env.DB.prepare('DELETE FROM oil_records WHERE id = ?').bind(id).run();
+        } catch {
+          await env.DB.prepare("DELETE FROM app_records WHERE collection='oil_records' AND id=?").bind(id).run();
+        }
+        return json({ success: true, id });
+      }
+
       if (path === '/api/gemini/parse-pdf-text' && method === 'POST') {
         const b = await body(request); if (typeof b.rawText !== 'string' || !b.rawText.trim()) return error('rawText string is required');
         const prompt = `Extract perfume entries from this PDF text. Return only a JSON array. Each object should have code, name, notes, fragrance, category, description. Do not invent entries.\n\n${b.rawText.slice(0, 50000)}`;

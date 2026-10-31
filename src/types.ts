@@ -106,6 +106,7 @@ export interface AppSettings {
 export type PageId =
   | 'dashboard'
   | 'calculator'
+  | 'oil-tracker'
   | 'similar-perfume'
   | 'chat'
   | 'history'
@@ -114,6 +115,21 @@ export type PageId =
   | 'database'
   | 'add-perfume'
   | 'settings';
+
+export type OilRecordType = 'consumption' | 'income';
+
+export interface OilRecord {
+  id: string;
+  date: string; // YYYY-MM-DD
+  oil_name: string;
+  type: OilRecordType;
+  quantity: number; // in ML or Grams
+  amount: number; // currency value
+  notes?: string;
+  unit?: 'ml' | 'g';
+  created_at?: string;
+  updated_at?: string;
+}
 
 export interface ChatMessage {
   id: string;

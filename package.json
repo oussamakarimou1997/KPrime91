@@ -8,10 +8,7 @@
     "dev": "tsx server.ts",
     "lint": "tsc --noEmit",
     "preview": "vite preview",
-    "start": "node server.ts",
-    "deploy": "wrangler deploy",
-    "db:migrate:remote": "wrangler d1 migrations apply kprime91-db --remote",
-    "db:migrate:local": "wrangler d1 migrations apply kprime91-db --local"
+    "start": "node server.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -38,9 +35,6 @@
     "esbuild": "^0.28.2",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0",
-    "@cloudflare/workers-types": "^4.20261030.0",
-    "wrangler": "^4.45.0"
+    "typescript": "~5.8.2"
   }
 }

@@ -24,6 +24,7 @@ const SIMILAR_HISTORY_FILE = path.join(DATA_DIR, 'similar_history.json');
 const CHAT_MESSAGES_FILE = path.join(DATA_DIR, 'chat_messages.json');
 const CHAT_READ_FILE = path.join(DATA_DIR, 'chat_read.json');
 const TEAM_USERS_FILE = path.join(DATA_DIR, 'team_users.json');
+const OIL_RECORDS_FILE = path.join(DATA_DIR, 'oil_records.json');
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
@@ -262,6 +263,157 @@ app.post('/api/salesmen/sync', (req, res) => {
     res.json({ success: true, count: salesmen.length });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Failed to sync salesmen' });
+  }
+});
+
+// ==========================================
+// 5. Essential Oil Inventory & Balance Endpoints (oil_records)
+// ==========================================
+const DEFAULT_OIL_RECORDS = [
+  {
+    id: 'oil_rec_1',
+    date: '2026-10-30',
+    oil_name: 'Bergamot Reggio Calabria',
+    type: 'consumption',
+    quantity: 120,
+    amount: 84.0,
+    notes: 'Formulation batch B-204 Sauvage Extrait',
+    created_at: '2026-10-30T09:15:00.000Z',
+    updated_at: '2026-10-30T09:15:00.000Z',
+  },
+  {
+    id: 'oil_rec_2',
+    date: '2026-10-30',
+    oil_name: 'Oud Cambodi Pure Extract',
+    type: 'income',
+    quantity: 50,
+    amount: 350.0,
+    notes: 'Client bespoke direct purchase (Mr. Alami)',
+    created_at: '2026-10-30T11:45:00.000Z',
+    updated_at: '2026-10-30T11:45:00.000Z',
+  },
+  {
+    id: 'oil_rec_3',
+    date: '2026-10-29',
+    oil_name: 'French Lavender Grasse',
+    type: 'consumption',
+    quantity: 95,
+    amount: 47.5,
+    notes: 'Dual-oil blend batch #44',
+    created_at: '2026-10-29T14:20:00.000Z',
+    updated_at: '2026-10-29T14:20:00.000Z',
+  },
+  {
+    id: 'oil_rec_4',
+    date: '2026-10-29',
+    oil_name: 'Rose Damascena Absolu',
+    type: 'income',
+    quantity: 100,
+    amount: 480.0,
+    notes: 'Wholesale delivery to VIP partner atelier',
+    created_at: '2026-10-29T16:00:00.000Z',
+    updated_at: '2026-10-29T16:00:00.000Z',
+  },
+  {
+    id: 'oil_rec_5',
+    date: '2026-10-28',
+    oil_name: 'Virginian Cedarwood',
+    type: 'consumption',
+    quantity: 200,
+    amount: 62.0,
+    notes: 'Base notes maceration for Woody Aromatic line',
+    created_at: '2026-10-28T10:30:00.000Z',
+    updated_at: '2026-10-28T10:30:00.000Z',
+  },
+  {
+    id: 'oil_rec_6',
+    date: '2026-10-25',
+    oil_name: 'Ambroxan Crystal Dilution',
+    type: 'consumption',
+    quantity: 150,
+    amount: 112.5,
+    notes: 'Fixative compounding for amber accords',
+    created_at: '2026-10-25T13:10:00.000Z',
+    updated_at: '2026-10-25T13:10:00.000Z',
+  },
+  {
+    id: 'oil_rec_7',
+    date: '2026-10-22',
+    oil_name: 'Italian Mandarine Essence',
+    type: 'income',
+    quantity: 250,
+    amount: 195.0,
+    notes: 'Retail bottle customization order',
+    created_at: '2026-10-22T15:40:00.000Z',
+    updated_at: '2026-10-22T15:40:00.000Z',
+  },
+  {
+    id: 'oil_rec_8',
+    date: '2026-10-15',
+    oil_name: 'Mysore Sandalwood Oil',
+    type: 'income',
+    quantity: 60,
+    amount: 520.0,
+    notes: 'Pure oil concentrate 60ml vial sale',
+    created_at: '2026-10-15T11:00:00.000Z',
+    updated_at: '2026-10-15T11:00:00.000Z',
+  },
+];
+
+app.get('/api/oil-records', (req, res) => {
+  try {
+    const records = readJsonFileSync<any[]>(OIL_RECORDS_FILE, DEFAULT_OIL_RECORDS);
+    // Sort by date descending
+    const sorted = [...records].sort((a, b) => {
+      const dateA = new Date(a.date || a.created_at || 0).getTime();
+      const dateB = new Date(b.date || b.created_at || 0).getTime();
+      return dateB - dateA;
+    });
+    res.json({ records: sorted, count: sorted.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to fetch oil records' });
+  }
+});
+
+app.post('/api/oil-records', (req, res) => {
+  try {
+    const data = req.body;
+    if (!data || !data.oil_name) {
+      return res.status(400).json({ error: 'oil_name is required' });
+    }
+
+    const current = readJsonFileSync<any[]>(OIL_RECORDS_FILE, DEFAULT_OIL_RECORDS);
+    const now = new Date().toISOString();
+    const newRecord = {
+      id: data.id || `oil_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      date: data.date || now.split('T')[0],
+      oil_name: String(data.oil_name).trim(),
+      type: data.type === 'consumption' ? 'consumption' : 'income',
+      quantity: Math.max(0, parseFloat(data.quantity) || 0),
+      amount: Math.max(0, parseFloat(data.amount) || 0),
+      notes: data.notes ? String(data.notes).trim() : '',
+      created_at: data.created_at || now,
+      updated_at: now,
+    };
+
+    const updated = [newRecord, ...current.filter((r: any) => r.id !== newRecord.id)];
+    writeJsonFileSync(OIL_RECORDS_FILE, updated);
+
+    res.json({ success: true, record: newRecord, count: updated.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to add oil record' });
+  }
+});
+
+app.delete('/api/oil-records/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const current = readJsonFileSync<any[]>(OIL_RECORDS_FILE, DEFAULT_OIL_RECORDS);
+    const filtered = current.filter((r: any) => r.id !== id);
+    writeJsonFileSync(OIL_RECORDS_FILE, filtered);
+    res.json({ success: true, count: filtered.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to delete oil record' });
   }
 });
 

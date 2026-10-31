@@ -12,6 +12,7 @@ import {
   Users,
   BarChart3,
   MessageSquare,
+  Droplets,
 } from 'lucide-react';
 import { PageId, AppSettings } from '../types';
 
@@ -63,6 +64,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: FlaskConical,
       isPrimary: true,
       subtitle: 'Core Formulator',
+    },
+    {
+      id: 'oil-tracker',
+      label: 'Oil Tracker',
+      icon: Droplets,
+      subtitle: 'Inventory & Balance',
     },
     {
       id: 'similar-perfume',

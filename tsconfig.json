@@ -23,8 +23,6 @@
   "include": [
     "src",
     "server.ts",
-    "vite.config.ts",
-    "worker/index.ts",
-    "worker-env.d.ts"
+    "vite.config.ts"
   ]
 }

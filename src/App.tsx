@@ -10,6 +10,7 @@ import { MixingHistory } from './components/MixingHistory';
 import { SalesTeam } from './components/SalesTeam';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
+import { OilTracker } from './components/OilTracker';
 import { PdfImportModal } from './components/PdfImportModal';
 import { PerfumeDetailModal } from './components/PerfumeDetailModal';
 import {
@@ -384,6 +385,13 @@ export function App() {
               onSaveFormula={handleSaveFormula}
               onNavigateToHistory={() => handleNavigate('history')}
               onNavigateToSettings={() => handleNavigate('settings')}
+            />
+          )}
+
+          {currentPage === 'oil-tracker' && (
+            <OilTracker
+              settings={settings}
+              perfumes={perfumes}
             />
           )}
 

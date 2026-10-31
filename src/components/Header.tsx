@@ -28,6 +28,10 @@ const PAGE_TITLES: Record<PageId, { title: string; subtitle: string }> = {
     title: 'Kprime Mixing Calculator',
     subtitle: 'High-precision 1 to 4 oils formulation mixing engine with Category pricing',
   },
+  'oil-tracker': {
+    title: 'Essential Oil Tracker',
+    subtitle: 'Track oils inventory, consumption, daily/monthly and custom date income',
+  },
   'similar-perfume': {
     title: 'Similar Perfume Finder',
     subtitle: 'Web research & olfactory comparison to find Top 5 matching Kprime database perfumes',

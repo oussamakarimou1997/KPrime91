@@ -1,0 +1,90 @@
+[
+  {
+    "id": "oil_rec_1",
+    "date": "2026-10-30",
+    "oil_name": "Bergamot Reggio Calabria",
+    "type": "consumption",
+    "quantity": 120,
+    "amount": 84,
+    "notes": "Formulation batch B-204 Sauvage Extrait",
+    "created_at": "2026-10-30T09:15:00.000Z",
+    "updated_at": "2026-10-30T09:15:00.000Z"
+  },
+  {
+    "id": "oil_rec_2",
+    "date": "2026-10-30",
+    "oil_name": "Oud Cambodi Pure Extract",
+    "type": "income",
+    "quantity": 50,
+    "amount": 350,
+    "notes": "Client bespoke direct purchase (Mr. Alami)",
+    "created_at": "2026-10-30T11:45:00.000Z",
+    "updated_at": "2026-10-30T11:45:00.000Z"
+  },
+  {
+    "id": "oil_rec_3",
+    "date": "2026-10-29",
+    "oil_name": "French Lavender Grasse",
+    "type": "consumption",
+    "quantity": 95,
+    "amount": 47.5,
+    "notes": "Dual-oil blend batch #44",
+    "created_at": "2026-10-29T14:20:00.000Z",
+    "updated_at": "2026-10-29T14:20:00.000Z"
+  },
+  {
+    "id": "oil_rec_4",
+    "date": "2026-10-29",
+    "oil_name": "Rose Damascena Absolu",
+    "type": "income",
+    "quantity": 100,
+    "amount": 480,
+    "notes": "Wholesale delivery to VIP partner atelier",
+    "created_at": "2026-10-29T16:00:00.000Z",
+    "updated_at": "2026-10-29T16:00:00.000Z"
+  },
+  {
+    "id": "oil_rec_5",
+    "date": "2026-10-28",
+    "oil_name": "Virginian Cedarwood",
+    "type": "consumption",
+    "quantity": 200,
+    "amount": 62,
+    "notes": "Base notes maceration for Woody Aromatic line",
+    "created_at": "2026-10-28T10:30:00.000Z",
+    "updated_at": "2026-10-28T10:30:00.000Z"
+  },
+  {
+    "id": "oil_rec_6",
+    "date": "2026-10-25",
+    "oil_name": "Ambroxan Crystal Dilution",
+    "type": "consumption",
+    "quantity": 150,
+    "amount": 112.5,
+    "notes": "Fixative compounding for amber accords",
+    "created_at": "2026-10-25T13:10:00.000Z",
+    "updated_at": "2026-10-25T13:10:00.000Z"
+  },
+  {
+    "id": "oil_rec_7",
+    "date": "2026-10-22",
+    "oil_name": "Italian Mandarine Essence",
+    "type": "income",
+    "quantity": 250,
+    "amount": 195,
+    "notes": "Retail bottle customization order",
+    "created_at": "2026-10-22T15:40:00.000Z",
+    "updated_at": "2026-10-22T15:40:00.000Z"
+  },
+  {
+    "id": "oil_rec_8",
+    "date": "2026-10-15",
+    "oil_name": "Mysore Sandalwood Oil",
+    "type": "income",
+    "quantity": 60,
+    "amount": 520,
+    "notes": "Pure oil concentrate 60ml vial sale",
+    "created_at": "2026-10-15T11:00:00.000Z",
+    "updated_at": "2026-10-15T11:00:00.000Z"
+  }
+]
