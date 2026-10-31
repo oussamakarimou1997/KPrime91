@@ -24,6 +24,7 @@ import {
   ChevronDown,
   BarChart3,
   Check,
+  ChevronUp,
 } from 'lucide-react';
 import { OilRecord, OilRecordType, AppSettings, Perfume } from '../types';
 import { fetchOilRecords, addOilRecord, deleteOilRecord } from '../services/oilService';
@@ -35,6 +36,21 @@ interface OilTrackerProps {
 
 type PeriodFilter = 'daily' | 'monthly' | 'custom' | 'all';
 type SourceFilter = 'all' | 'auto' | 'manual';
+
+export interface GroupedPerfumeRecord {
+  oil_name: string;
+  totalQuantity: number;
+  totalAmount: number;
+  unit: string;
+  batchCount: number;
+  autoLoggedCount: number;
+  manualCount: number;
+  consumptionCount: number;
+  incomeCount: number;
+  primaryType: 'consumption' | 'income' | 'mixed';
+  latestDate: string;
+  records: OilRecord[];
+}
 
 export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] }) => {
   // Data state
@@ -50,6 +66,9 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('monthly');
   const [selectedPerfumeFilter, setSelectedPerfumeFilter] = useState<string | null>(null);
   const [showPerfumeBreakdown, setShowPerfumeBreakdown] = useState(true);
+
+  // Batch expansion state for grouped perfume rows
+  const [expandedPerfumes, setExpandedPerfumes] = useState<Set<string>>(new Set());
 
   // Date selectors
   const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
@@ -216,6 +235,91 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
     customEndDate,
   ]);
 
+  // Grouped by Perfume: aggregates multiple batches sharing the same perfume/oil name into a single row
+  const groupedRecords: GroupedPerfumeRecord[] = useMemo(() => {
+    const map = new Map<string, GroupedPerfumeRecord>();
+
+    filteredRecords.forEach((r) => {
+      const name = r.oil_name.trim();
+      const existing = map.get(name) || {
+        oil_name: name,
+        totalQuantity: 0,
+        totalAmount: 0,
+        unit: r.unit || 'g',
+        batchCount: 0,
+        autoLoggedCount: 0,
+        manualCount: 0,
+        consumptionCount: 0,
+        incomeCount: 0,
+        primaryType: r.type,
+        latestDate: r.date || r.created_at || '',
+        records: [],
+      };
+
+      existing.totalQuantity += Number(r.quantity) || 0;
+      existing.totalAmount += Number(r.amount) || 0;
+      existing.batchCount += 1;
+      if (isAutoLogged(r)) existing.autoLoggedCount += 1;
+      else existing.manualCount += 1;
+
+      if (r.type === 'consumption') existing.consumptionCount += 1;
+      if (r.type === 'income') existing.incomeCount += 1;
+
+      const rDate = r.date || r.created_at || '';
+      if (rDate && (!existing.latestDate || rDate > existing.latestDate)) {
+        existing.latestDate = rDate;
+      }
+
+      existing.records.push(r);
+      map.set(name, existing);
+    });
+
+    const groups = Array.from(map.values()).map((g) => {
+      let primaryType: 'consumption' | 'income' | 'mixed' = 'consumption';
+      if (g.consumptionCount > 0 && g.incomeCount > 0) {
+        primaryType = 'mixed';
+      } else if (g.incomeCount > 0) {
+        primaryType = 'income';
+      } else {
+        primaryType = 'consumption';
+      }
+
+      // Sort inner batch records by date descending
+      g.records.sort((a, b) => {
+        const dateA = new Date(a.date || a.created_at || 0).getTime();
+        const dateB = new Date(b.date || b.created_at || 0).getTime();
+        return dateB - dateA;
+      });
+
+      return {
+        ...g,
+        primaryType,
+      };
+    });
+
+    // Sort grouped perfumes by latest batch date descending, then quantity
+    return groups.sort((a, b) => {
+      const dateA = new Date(a.latestDate || 0).getTime();
+      const dateB = new Date(b.latestDate || 0).getTime();
+      if (dateB !== dateA) return dateB - dateA;
+      return b.totalQuantity - a.totalQuantity;
+    });
+  }, [filteredRecords]);
+
+  // Expansion actions for grouped perfume rows
+  const toggleExpandPerfume = (perfumeName: string) => {
+    setExpandedPerfumes((prev) => {
+      const next = new Set(prev);
+      if (next.has(perfumeName)) {
+        next.delete(perfumeName);
+      } else {
+        next.add(perfumeName);
+      }
+      return next;
+    });
+  };
+
+
   // Daily Metrics
   const dailyMetrics = useMemo(() => {
     const dailyRecords = records.filter((r) => getRecordDate(r) === selectedDate);
@@ -306,6 +410,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
       {
         oil_name: string;
         totalGrams: number;
+        totalAmount: number;
         batchCount: number;
         autoLoggedCount: number;
         manualCount: number;
@@ -332,6 +437,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
       const existing = map.get(name) || {
         oil_name: name,
         totalGrams: 0,
+        totalAmount: 0,
         batchCount: 0,
         autoLoggedCount: 0,
         manualCount: 0,
@@ -339,6 +445,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
       };
 
       existing.totalGrams += Number(r.quantity) || 0;
+      existing.totalAmount += Number(r.amount) || 0;
       existing.batchCount += 1;
       if (isAutoLogged(r)) existing.autoLoggedCount += 1;
       else existing.manualCount += 1;
@@ -430,21 +537,33 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
     }
   };
 
-  // Export to CSV
+  // Export to CSV (Grouped Perfume Summary)
   const handleExportCsv = () => {
-    if (filteredRecords.length === 0) return;
-    const headers = ['ID', 'Date', 'Oil Name', 'Type', 'Quantity', 'Unit', 'Amount', 'Currency', 'Source', 'Notes'];
-    const rows = filteredRecords.map((r) => [
-      r.id,
-      r.date,
-      `"${(r.oil_name || '').replace(/"/g, '""')}"`,
-      r.type,
-      r.quantity,
-      r.unit || 'g',
-      r.amount,
+    if (groupedRecords.length === 0) return;
+
+    const headers = [
+      'Perfume Name',
+      'Combined Quantity',
+      'Unit',
+      'Total Amount',
+      'Currency',
+      'Batch Count',
+      'Auto Mixes',
+      'Manual Entries',
+      'Primary Type',
+      'Latest Activity Date',
+    ];
+    const rows = groupedRecords.map((g) => [
+      `"${(g.oil_name || '').replace(/"/g, '""')}"`,
+      g.totalQuantity.toFixed(2),
+      g.unit,
+      g.totalAmount.toFixed(2),
       currencySymbol,
-      isAutoLogged(r) ? 'Calculator Auto-Logged' : 'Manual Entry',
-      `"${(r.notes || '').replace(/"/g, '""')}"`,
+      g.batchCount,
+      g.autoLoggedCount,
+      g.manualCount,
+      g.primaryType,
+      g.latestDate,
     ]);
 
     const csvContent =
@@ -452,7 +571,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `kprime_oil_records_${periodFilter}_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `kprime_oil_grouped_${periodFilter}_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -866,9 +985,14 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                   return (
                     <div
                       key={perfume.oil_name}
-                      onClick={() =>
-                        setSelectedPerfumeFilter(isSelected ? null : perfume.oil_name)
-                      }
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedPerfumeFilter(null);
+                        } else {
+                          setSelectedPerfumeFilter(perfume.oil_name);
+                          setExpandedPerfumes((prev) => new Set([...prev, perfume.oil_name]));
+                        }
+                      }}
                       className={`cursor-pointer rounded-xl p-3.5 border transition-all relative overflow-hidden group ${
                         isSelected
                           ? 'bg-emerald-50/80 border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm'
@@ -883,12 +1007,17 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                               {perfume.oil_name}
                             </h4>
                           </div>
-                          <div className="mt-1 flex items-center gap-2 text-[10px] text-stone-500">
+                          <div className="mt-1 flex items-center gap-2 text-[10px] text-stone-500 flex-wrap">
                             <span>{perfume.batchCount} {perfume.batchCount === 1 ? 'batch' : 'batches'}</span>
                             {perfume.autoLoggedCount > 0 && (
                               <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
                                 <FlaskConical className="w-2.5 h-2.5 inline" />
                                 {perfume.autoLoggedCount} auto
+                              </span>
+                            )}
+                            {perfume.totalAmount > 0 && (
+                              <span className="text-stone-500 font-mono font-semibold">
+                                • {currencySymbol} {perfume.totalAmount.toFixed(2)}
                               </span>
                             )}
                           </div>
@@ -1144,7 +1273,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2.5 flex-wrap">
             {/* Filter by Type */}
             <div className="flex items-center bg-white border border-stone-300 rounded-xl p-0.5 shadow-2xs">
               <button
@@ -1215,7 +1344,7 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
             </div>
 
             <div className="text-xs text-stone-500 font-mono pl-1">
-              Showing <span className="font-bold text-stone-900">{filteredRecords.length}</span> records
+              Showing <span className="font-bold text-stone-900">{groupedRecords.length}</span> unique perfumes ({filteredRecords.length} batches)
             </div>
           </div>
         </div>
@@ -1225,25 +1354,25 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-stone-200 bg-stone-100/70 text-[11px] font-bold text-stone-600 uppercase tracking-wider">
-                <th className="py-3 px-4">Date</th>
-                <th className="py-3 px-4">Oil / Perfume Blend</th>
-                <th className="py-3 px-4">Source</th>
+                <th className="py-3 px-3 w-8"></th>
+                <th className="py-3 px-4">Perfume / Essential Oil</th>
+                <th className="py-3 px-4">Batches</th>
                 <th className="py-3 px-4">Type</th>
-                <th className="py-3 px-4 text-right">Quantity</th>
-                <th className="py-3 px-4 text-right">Amount</th>
-                <th className="py-3 px-4">Notes</th>
-                <th className="py-3 px-4 text-center">Action</th>
+                <th className="py-3 px-4 text-right">Combined Quantity</th>
+                <th className="py-3 px-4 text-right">Total Amount</th>
+                <th className="py-3 px-4">Latest Activity</th>
+                <th className="py-3 px-4 text-center">Batch History</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 text-xs">
-              {filteredRecords.length === 0 ? (
+              {groupedRecords.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-stone-500">
                     <div className="max-w-xs mx-auto space-y-2">
                       <Droplets className="w-8 h-8 text-stone-300 mx-auto" />
-                      <p className="font-semibold text-stone-700">No records match your filters</p>
+                      <p className="font-semibold text-stone-700">No perfume records match your filters</p>
                       <p className="text-[11px] text-stone-400">
-                        Calculate and save a mix in the Mixing Calculator to auto-sync, or add a manual entry.
+                        Compound a blend in the Mixing Calculator or add a manual entry.
                       </p>
                       <button
                         onClick={() => setIsFormOpen(true)}
@@ -1256,113 +1385,263 @@ export const OilTracker: React.FC<OilTrackerProps> = ({ settings, perfumes = [] 
                   </td>
                 </tr>
               ) : (
-                filteredRecords.map((record) => {
-                  const isIncome = record.type === 'income';
-                  const auto = isAutoLogged(record);
+                groupedRecords.map((group) => {
+                  const isExpanded = expandedPerfumes.has(group.oil_name);
+                  const isPrimaryIncome = group.primaryType === 'income';
+                  const isMixed = group.primaryType === 'mixed';
 
                   return (
-                    <tr
-                      key={record.id}
-                      className={`hover:bg-stone-50/80 transition-colors group ${
-                        auto ? 'bg-emerald-50/20' : ''
-                      }`}
-                    >
-                      {/* Date */}
-                      <td className="py-3.5 px-4 font-mono font-medium text-stone-700 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-stone-400" />
-                          <span>{getRecordDate(record)}</span>
-                          {record.date && record.date.includes('T') && (
-                            <span className="text-[10px] text-stone-400 font-mono">
-                              {new Date(record.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <React.Fragment key={group.oil_name}>
+                      <tr
+                        onClick={() => toggleExpandPerfume(group.oil_name)}
+                        className={`cursor-pointer transition-colors border-b border-stone-100 select-none ${
+                          isExpanded ? 'bg-emerald-50/40 font-medium' : 'hover:bg-stone-50/80 bg-white'
+                        }`}
+                      >
+                        {/* Expand Chevron */}
+                        <td className="py-3.5 px-3 text-stone-400 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleExpandPerfume(group.oil_name);
+                            }}
+                            className="p-1 rounded hover:bg-stone-200/60 text-stone-500 transition-colors"
+                            title={isExpanded ? 'Collapse batches' : 'Expand batches'}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="w-4 h-4 text-emerald-800" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-stone-400" />
+                            )}
+                          </button>
+                        </td>
+
+                        {/* Perfume Name */}
+                        <td className="py-3.5 px-4 font-bold text-stone-900">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                                isPrimaryIncome ? 'bg-emerald-500' : isMixed ? 'bg-amber-500' : 'bg-rose-500'
+                              }`}
+                            />
+                            <span className="text-sm font-serif-luxury tracking-wide text-stone-900" title={group.oil_name}>
+                              {group.oil_name}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Batches count */}
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-stone-100 text-stone-800 border border-stone-200">
+                              <Layers className="w-3 h-3 text-stone-500" />
+                              {group.batchCount} {group.batchCount === 1 ? 'batch' : 'batches'}
+                            </span>
+                            {group.autoLoggedCount > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                <FlaskConical className="w-3 h-3 text-emerald-600" />
+                                {group.autoLoggedCount} auto
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Primary Type */}
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          {isMixed ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                              Mixed ({group.consumptionCount} C / {group.incomeCount} I)
+                            </span>
+                          ) : isPrimaryIncome ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300/80">
+                              <TrendingUp className="w-3 h-3 text-emerald-700" />
+                              Income
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-900 border border-rose-300/80">
+                              <TrendingDown className="w-3 h-3 text-rose-700" />
+                              Consumption
                             </span>
                           )}
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Oil Name */}
-                      <td className="py-3.5 px-4 font-semibold text-stone-900">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                              isIncome ? 'bg-emerald-500' : 'bg-rose-500'
+                        {/* Combined Total Quantity */}
+                        <td className="py-3.5 px-4 text-right font-mono font-extrabold text-stone-900 whitespace-nowrap text-sm">
+                          <span>
+                            {group.totalQuantity.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}{' '}
+                            <span className="text-xs font-sans font-bold text-amber-700">
+                              {group.unit}
+                            </span>
+                          </span>
+                        </td>
+
+                        {/* Combined Total Amount */}
+                        <td className="py-3.5 px-4 text-right font-mono font-bold whitespace-nowrap text-sm">
+                          <span className={isPrimaryIncome ? 'text-emerald-700 font-extrabold' : 'text-stone-900 font-extrabold'}>
+                            {isPrimaryIncome ? '+' : ''} {currencySymbol}{' '}
+                            {group.totalAmount.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </td>
+
+                        {/* Latest Activity Date */}
+                        <td className="py-3.5 px-4 font-mono text-xs text-stone-600 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-stone-400" />
+                            <span>{group.latestDate ? group.latestDate.split('T')[0] : '—'}</span>
+                            {group.latestDate && group.latestDate.includes('T') && (
+                              <span className="text-[10px] text-stone-400">
+                                {new Date(group.latestDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Actions / View Details */}
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleExpandPerfume(group.oil_name);
+                            }}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                              isExpanded
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
                             }`}
-                          />
-                          <span className="truncate max-w-[240px]" title={record.oil_name}>
-                            {record.oil_name}
-                          </span>
-                        </div>
-                      </td>
+                          >
+                            <span>{isExpanded ? 'Hide' : 'View'} ({group.batchCount})</span>
+                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                        </td>
+                      </tr>
 
-                      {/* Source Badge (Requirement 2) */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {auto ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
-                            <FlaskConical className="w-3 h-3 text-emerald-600" />
-                            Auto-Logged
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-stone-100 text-stone-600 border border-stone-200">
-                            Manual
-                          </span>
-                        )}
-                      </td>
+                      {/* Expandable nested table showing individual batches */}
+                      {isExpanded && (
+                        <tr className="bg-stone-50/70 border-b border-stone-200">
+                          <td colSpan={8} className="p-3 sm:p-4">
+                            <div className="bg-white rounded-xl border border-stone-200/90 shadow-xs overflow-hidden">
+                              <div className="px-4 py-2.5 bg-stone-100/70 border-b border-stone-200 flex items-center justify-between flex-wrap gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Droplets className="w-4 h-4 text-emerald-700" />
+                                  <span className="text-xs font-bold text-stone-800">
+                                    Individual Batches for "{group.oil_name}"
+                                  </span>
+                                  <span className="text-[11px] text-stone-500 font-mono">
+                                    ({group.records.length} records • Total: {group.totalQuantity.toFixed(2)} {group.unit})
+                                  </span>
+                                </div>
+                                <span className="text-[11px] text-stone-500 italic">
+                                  Click trash icon to delete an individual batch
+                                </span>
+                              </div>
 
-                      {/* Type Badge */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {isIncome ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300/80">
-                            <TrendingUp className="w-3 h-3 text-emerald-700" />
-                            Income
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-900 border border-rose-300/80">
-                            <TrendingDown className="w-3 h-3 text-rose-700" />
-                            Consumption
-                          </span>
-                        )}
-                      </td>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse text-xs">
+                                  <thead>
+                                    <tr className="border-b border-stone-200 bg-stone-50 text-[10px] font-bold text-stone-500 uppercase tracking-wider">
+                                      <th className="py-2 px-3">Batch Date & Time</th>
+                                      <th className="py-2 px-3">Source</th>
+                                      <th className="py-2 px-3">Type</th>
+                                      <th className="py-2 px-3 text-right">Batch Mass</th>
+                                      <th className="py-2 px-3 text-right">Batch Price</th>
+                                      <th className="py-2 px-3">Formulation Notes</th>
+                                      <th className="py-2 px-3 text-center">Action</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-stone-100">
+                                    {group.records.map((batchRecord) => {
+                                      const autoBatch = isAutoLogged(batchRecord);
+                                      const isIncomeBatch = batchRecord.type === 'income';
 
-                      {/* Quantity */}
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-stone-800 whitespace-nowrap">
-                        <span className={isIncome ? 'text-emerald-900' : 'text-stone-900'}>
-                          {Number(record.quantity).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}{' '}
-                          <span className="text-[10px] text-stone-500 uppercase font-sans font-bold">
-                            {record.unit || 'g'}
-                          </span>
-                        </span>
-                      </td>
+                                      return (
+                                        <tr key={batchRecord.id} className="hover:bg-stone-50 transition-colors">
+                                          <td className="py-2.5 px-3 font-mono text-stone-700 whitespace-nowrap">
+                                            <div className="flex items-center gap-1.5">
+                                              <Calendar className="w-3 h-3 text-stone-400" />
+                                              <span>{getRecordDate(batchRecord)}</span>
+                                              {batchRecord.date && batchRecord.date.includes('T') && (
+                                                <span className="text-[10px] text-stone-400 font-mono">
+                                                  {new Date(batchRecord.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </td>
 
-                      {/* Amount */}
-                      <td className="py-3.5 px-4 text-right font-mono font-bold whitespace-nowrap">
-                        <span className={isIncome ? 'text-emerald-700 font-extrabold' : 'text-stone-800'}>
-                          {isIncome ? '+' : '-'} {currencySymbol}{' '}
-                          {Number(record.amount).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                      </td>
+                                          <td className="py-2.5 px-3 whitespace-nowrap">
+                                            {autoBatch ? (
+                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                                <FlaskConical className="w-2.5 h-2.5 text-emerald-600" />
+                                                Auto Mix
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-stone-100 text-stone-600 border border-stone-200">
+                                                Manual
+                                              </span>
+                                            )}
+                                          </td>
 
-                      {/* Notes */}
-                      <td className="py-3.5 px-4 text-stone-500 max-w-xs truncate" title={record.notes}>
-                        {record.notes ? record.notes : <span className="text-stone-300 italic">—</span>}
-                      </td>
+                                          <td className="py-2.5 px-3 whitespace-nowrap">
+                                            {isIncomeBatch ? (
+                                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+                                                Income
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-300">
+                                                Consumption
+                                              </span>
+                                            )}
+                                          </td>
 
-                      {/* Action */}
-                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        <button
-                          onClick={() => setRecordToDelete(record)}
-                          className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          title="Delete record"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
+                                          <td className="py-2.5 px-3 text-right font-mono font-bold text-stone-900 whitespace-nowrap">
+                                            {Number(batchRecord.quantity).toFixed(2)}{' '}
+                                            <span className="text-[10px] font-sans font-bold text-amber-700">
+                                              {batchRecord.unit || 'g'}
+                                            </span>
+                                          </td>
+
+                                          <td className="py-2.5 px-3 text-right font-mono font-bold whitespace-nowrap">
+                                            <span className={isIncomeBatch ? 'text-emerald-700' : 'text-stone-800'}>
+                                              {isIncomeBatch ? '+' : '-'} {currencySymbol}{' '}
+                                              {Number(batchRecord.amount).toFixed(2)}
+                                            </span>
+                                          </td>
+
+                                          <td className="py-2.5 px-3 text-stone-600 max-w-xs truncate" title={batchRecord.notes}>
+                                            {batchRecord.notes || <span className="text-stone-300 italic">—</span>}
+                                          </td>
+
+                                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setRecordToDelete(batchRecord);
+                                              }}
+                                              className="p-1 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                              title="Delete this batch record"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })
               )}
